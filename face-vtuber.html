@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>페이스 버추얼</title>
+<style>
+:root{--bg:#161a24;--panel:#1f2432;--line:#303851;--ink:#e8ecf4;--mute:#97a1b8;--acc:#6ea8ff;--stage:#2b3350}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Noto Sans KR","Apple SD Gothic Neo",sans-serif;-webkit-tap-highlight-color:transparent}
+.app{display:grid;grid-template-columns:1fr 340px;height:100dvh}
+.app.hide-ui{grid-template-columns:1fr 0}
+.app.hide-ui .side,.app.hide-ui .cam{display:none}
+.stage{position:relative;background:var(--stage);overflow:hidden}
+#avatar{position:absolute;inset:0;width:100%;height:100%}
+.skin{fill:var(--skin)}.hair{fill:var(--hair)}
+.cam{position:absolute;left:12px;top:12px;width:190px;aspect-ratio:4/3;border-radius:12px;overflow:hidden;background:#000;border:1px solid #ffffff30;box-shadow:0 4px 18px #0006}
+.cam .mirror{position:absolute;inset:0;transform:scaleX(-1)}
+.cam video,.cam canvas{position:absolute;inset:0;width:100%;height:100%}
+.cam.off video{opacity:0}
+.badge{position:absolute;left:6px;bottom:6px;font-size:11px;padding:2px 7px;border-radius:99px;background:#000a;color:#fff}
+.badge.ok{background:#1f8f55cc}.badge.lost{background:#b3402ecc}
+.overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;background:#10131ccc;backdrop-filter:blur(3px);z-index:5}
+.overlay h1{margin:0;font-size:22px}
+.overlay p{margin:0;color:var(--mute);font-size:14px;line-height:1.6;max-width:420px}
+.overlay .err{color:#ff9b8a}
+button{font:inherit;color:var(--ink);background:#2c3550;border:1px solid var(--line);border-radius:10px;padding:9px 14px;cursor:pointer}
+button:hover{background:#36415f}
+button.primary{background:var(--acc);color:#0b1220;border:0;font-weight:700;padding:13px 26px;font-size:16px}
+.side{background:var(--panel);border-left:1px solid var(--line);overflow:auto;padding:14px}
+.side h2{font-size:13px;letter-spacing:.04em;color:var(--mute);margin:18px 0 8px;font-weight:600}
+.side h2:first-child{margin-top:0}
+.row{display:grid;grid-template-columns:96px 54px 1fr;align-items:center;gap:8px;font-size:13px;margin:5px 0}
+.row .vl{text-align:right;font-variant-numeric:tabular-nums;color:#cfe0ff}
+.bar{position:relative;height:8px;background:#11151f;border-radius:99px;overflow:hidden}
+.bar i{position:absolute;top:0;bottom:0;background:var(--acc);border-radius:99px}
+.bar.signed::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:#ffffff50}
+.ctl{display:grid;grid-template-columns:86px 1fr 38px;gap:8px;align-items:center;font-size:13px;margin:7px 0}
+.ctl output{text-align:right;color:var(--mute);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--acc)}
+label.chk{display:flex;gap:8px;align-items:center;font-size:13px;margin:7px 0}
+.colors{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--mute)}
+.colors label{display:flex;align-items:center;gap:6px}
+input[type=color]{width:34px;height:26px;border:1px solid var(--line);border-radius:6px;background:none;padding:0}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.hint{font-size:12px;color:var(--mute);line-height:1.55;margin-top:6px}
+#reopen{position:absolute;right:10px;top:10px;z-index:4;padding:6px 10px;opacity:.55}
+#reopen[hidden]{display:none}
+#toast{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);background:#000c;padding:8px 14px;border-radius:99px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:6}
+#toast.on{opacity:1}
+@media (max-width:820px){
+  .app{grid-template-columns:1fr;grid-template-rows:58dvh 1fr}
+  .app.hide-ui{grid-template-rows:100dvh 0}
+  .side{border-left:0;border-top:1px solid var(--line)}
+  .cam{width:120px}
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="stage" id="stage">
+    <svg id="avatar" viewBox="-200 -250 400 500" preserveAspectRatio="xMidYMid meet" aria-label="버추얼 캐릭터">
+      <defs>
+        <clipPath id="clipE"><ellipse cx="0" cy="0" rx="27" ry="31"/></clipPath>
+        <clipPath id="clipM"><path id="mouthClipPath" d=""/></clipPath>
+      </defs>
+
+      <!-- 몸 -->
+      <g id="body">
+        <rect x="-26" y="105" width="52" height="60" rx="14" style="fill:var(--skinShade)"/>
+        <path d="M-150,260 L-126,190 Q-92,160 -40,152 L40,152 Q92,160 126,190 L150,260 Z" style="fill:var(--outfit)"/>
+        <path d="M-34,152 Q0,186 34,152" fill="none" stroke="#00000030" stroke-width="5" stroke-linecap="round"/>
+      </g>
+
+      <!-- 머리 -->
+      <g id="headRoot">
+        <g id="headScale">
+          <g id="hairBack"><path class="hair" d="M-142,-8 C-158,-200 158,-200 142,-8 L146,132 Q0,170 -146,132 Z"/></g>
+          <g id="earL"><circle cx="-116" cy="8" r="20" class="skin"/><circle cx="-116" cy="8" r="9" fill="#00000012"/></g>
+          <g id="earR"><circle cx="116" cy="8" r="20" class="skin"/><circle cx="116" cy="8" r="9" fill="#00000012"/></g>
+          <g id="face"><ellipse cx="0" cy="0" rx="118" ry="138" class="skin"/></g>
+
+          <g id="feat">
+            <!-- 볼터치 -->
+            <circle id="blushL" cx="-76" cy="44" r="20" fill="#ff7a8a" opacity="0"/>
+            <circle id="blushR" cx="76" cy="44" r="20" fill="#ff7a8a" opacity="0"/>
+
+            <!-- 눈썹 -->
+            <g id="browL" transform="translate(-58,-62)"><path d="M-24,2 Q0,-8 24,2" fill="none" stroke="#2a2030" stroke-width="8" stroke-linecap="round"/></g>
+            <g id="browR" transform="translate(58,-62)"><path d="M-24,2 Q0,-8 24,2" fill="none" stroke="#2a2030" stroke-width="8" stroke-linecap="round"/></g>
+
+            <!-- 눈 (화면 왼쪽 = 사용자 왼쪽 눈, 거울 기준) -->
+            <g id="eyeL" transform="translate(-58,-12)">
+              <g clip-path="url(#clipE)">
+                <ellipse rx="27" ry="31" fill="#fff"/>
+                <g id="irisL"><circle r="16" style="fill:var(--iris)"/><circle r="8" fill="#14101c"/><circle cx="-5" cy="-6" r="4.5" fill="#fff"/></g>
+                <rect id="lidL" x="-32" y="-36" width="64" height="0" class="skin"/>
+                <rect id="lowL" x="-32" y="34" width="64" height="40" class="skin"/>
+              </g>
+              <ellipse rx="27" ry="31" fill="none" stroke="#2a2030" stroke-width="3"/>
+              <path id="lashL" d="" fill="none" stroke="#2a2030" stroke-width="6" stroke-linecap="round"/>
+            </g>
+            <g id="eyeR" transform="translate(58,-12)">
+              <g clip-path="url(#clipE)">
+                <ellipse rx="27" ry="31" fill="#fff"/>
+                <g id="irisR"><circle r="16" style="fill:var(--iris)"/><circle r="8" fill="#14101c"/><circle cx="-5" cy="-6" r="4.5" fill="#fff"/></g>
+                <rect id="lidR" x="-32" y="-36" width="64" height="0" class="skin"/>
+                <rect id="lowR" x="-32" y="34" width="64" height="40" class="skin"/>
+              </g>
+              <ellipse rx="27" ry="31" fill="none" stroke="#2a2030" stroke-width="3"/>
+              <path id="lashR" d="" fill="none" stroke="#2a2030" stroke-width="6" stroke-linecap="round"/>
+            </g>
+
+            <!-- 코 -->
+            <g id="noseG"><path d="M-4,14 Q8,32 -5,36" fill="none" stroke="#0000004a" stroke-width="4" stroke-linecap="round"/></g>
+
+            <!-- 입 -->
+            <g id="mouthG" transform="translate(0,76)">
+              <path id="mouthFill" d="" fill="#6e1f31"/>
+              <g clip-path="url(#clipM)">
+                <rect id="teeth" x="-60" y="-10" width="120" height="0" fill="#fff"/>
+                <ellipse id="tongue" cx="0" cy="40" rx="20" ry="13" fill="#ff8c9f" opacity="0"/>
+              </g>
+              <path id="mouthLine" d="" fill="none" stroke="#7a2c3a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            </g>
+          </g>
+
+          <!-- 앞머리 -->
+          <g id="bangs"><path class="hair" d="M-128,-34 C-136,-176 136,-176 128,-34 C112,-92 76,-92 56,-122 C46,-86 8,-78 -14,-112 C-26,-80 -74,-76 -92,-110 C-104,-84 -118,-74 -128,-34 Z"/></g>
+        </g>
+      </g>
+    </svg>
+
+    <div class="cam off" id="cam">
+      <div class="mirror"><video id="video" playsinline muted></video><canvas id="ov"></canvas></div>
+      <span class="badge" id="badge">대기</span>
+    </div>
+
+    <button id="reopen" hidden>⚙ 패널</button>
+
+    <div class="overlay" id="overlay">
+      <h1>페이스 버추얼</h1>
+      <p>카메라로 얼굴 방향 · 눈 뜸 · 코 · 입 벌림 · 입꼬리를 실시간으로 읽어 캐릭터를 움직입니다. 영상은 이 기기 안에서만 처리되고 어디로도 전송되지 않습니다.</p>
+      <button class="primary" id="start">카메라 시작</button>
+      <p id="status">첫 실행 시 얼굴 인식 모델(약 4MB)을 내려받습니다.</p>
+    </div>
+    <div id="toast"></div>
+  </div>
+
+  <aside class="side" id="side">
+    <h2>실시간 감지값</h2>
+    <div id="metrics"></div>
+
+    <h2>보정 · 조절</h2>
+    <div class="btns">
+      <button id="calib">정면 보정 (C)</button>
+      <button id="hideUi">패널 숨기기 (H)</button>
+    </div>
+    <div class="hint">편안한 무표정으로 정면을 보고 보정을 누르면 지금 상태가 기준(0)이 됩니다. 처음 얼굴이 잡히면 자동으로 한 번 보정합니다.</div>
+    <div class="ctl"><span>스무딩</span><input type="range" id="sSmooth" min="0" max="0.85" step="0.01" value="0.4"><output id="oSmooth"></output></div>
+    <div class="ctl"><span>입 민감도</span><input type="range" id="sMouth" min="0.8" max="3" step="0.05" value="1.5"><output id="oMouth"></output></div>
+    <div class="ctl"><span>고개 민감도</span><input type="range" id="sHead" min="0.5" max="2" step="0.05" value="1"><output id="oHead"></output></div>
+    <label class="chk"><input type="checkbox" id="cShowCam" checked> 카메라 화면 보기</label>
+    <label class="chk"><input type="checkbox" id="cShowLm" checked> 랜드마크(점/선) 표시</label>
+    <label class="chk"><input type="checkbox" id="cSwap"> 눈·입꼬리 좌우 바꾸기</label>
+    <div class="hint">한쪽 눈만 윙크했을 때 캐릭터가 반대쪽 눈을 감으면 “좌우 바꾸기”를 켜세요.</div>
+
+    <h2>캐릭터 색 · 배경</h2>
+    <div class="colors">
+      <label>피부 <input type="color" id="cSkin" value="#ffd9bf"></label>
+      <label>머리 <input type="color" id="cHair" value="#5b3a8c"></label>
+      <label>눈 <input type="color" id="cIris" value="#3f8cff"></label>
+      <label>옷 <input type="color" id="cOutfit" value="#ef6f8f"></label>
+      <label>배경 <input type="color" id="cBg" value="#2b3350"></label>
+    </div>
+    <div class="btns" style="margin-top:10px"><button id="greenBg">초록 배경 (크로마키)</button></div>
+  </aside>
+</div>
+
+<script type="module">
+const LIB = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+const MODEL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+const $ = id => document.getElementById(id);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+
+/* ---------- 감지값 표시 패널 ---------- */
+const METRICS = [
+  { h: "눈" },
+  { k: "eyeL", label: "눈 뜸 (왼)", min: 0, max: 1, f: v => Math.round(v * 100) + "%" },
+  { k: "eyeR", label: "눈 뜸 (오)", min: 0, max: 1, f: v => Math.round(v * 100) + "%" },
+  { k: "gx", label: "시선 좌우", min: -1, max: 1, f: v => v.toFixed(2) },
+  { k: "gy", label: "시선 상하", min: -1, max: 1, f: v => v.toFixed(2) },
+  { k: "brow", label: "눈썹", min: -1, max: 1, f: v => v.toFixed(2) },
+  { h: "입" },
+  { k: "jaw", label: "입 벌림", min: 0, max: 1, f: v => Math.round(v * 100) + "%" },
+  { k: "cornerL", label: "입꼬리 (왼)", min: -1, max: 1, f: v => v.toFixed(2) },
+  { k: "cornerR", label: "입꼬리 (오)", min: -1, max: 1, f: v => v.toFixed(2) },
+  { k: "pucker", label: "입 오므림", min: 0, max: 1, f: v => Math.round(v * 100) + "%" },
+  { h: "머리 · 코" },
+  { k: "yaw", label: "좌우 회전", min: -45, max: 45, f: v => v.toFixed(1) + "°" },
+  { k: "pitch", label: "상하 끄덕", min: -35, max: 35, f: v => v.toFixed(1) + "°" },
+  { k: "roll", label: "기울기", min: -45, max: 45, f: v => v.toFixed(1) + "°" },
+  { k: "nx", label: "코 X", min: 0, max: 1, f: v => v.toFixed(3) },
+  { k: "ny", label: "코 Y", min: 0, max: 1, f: v => v.toFixed(3) },
+  { k: "size", label: "얼굴 크기", min: 0, max: 0.8, f: v => Math.round(v * 100) + "%" },
+];
+const metricEls = {};
+(function buildMetrics() {
+  const host = $("metrics");
+  for (const m of METRICS) {
+    if (m.h) { const h = document.createElement("h2"); h.textContent = m.h; h.style.marginTop = host.children.length ? "14px" : "0"; host.appendChild(h); continue; }
+    const row = document.createElement("div"); row.className = "row";
+    const signed = m.min < 0;
+    row.innerHTML = `<span>${m.label}</span><span class="vl">–</span><div class="bar ${signed ? "signed" : ""}"><i></i></div>`;
+    host.appendChild(row);
+    metricEls[m.k] = { vl: row.children[1], bar: row.querySelector("i"), m };
+  }
+})();
+function paintMetrics() {
+  for (const k in metricEls) {
+    const { vl, bar, m } = metricEls[k];
+    const v = S[k]; if (v === undefined) continue;
+    vl.textContent = m.f(v);
+    const t = clamp((v - m.min) / (m.max - m.min));
+    if (m.min < 0) { const c = 0.5; bar.style.left = Math.min(c, t) * 100 + "%"; bar.style.width = Math.abs(t - c) * 100 + "%"; }
+    else { bar.style.left = "0%"; bar.style.width = t * 100 + "%"; }
+  }
+}
+
+/* ---------- 상태 ---------- */
+const S = {};                    // 스무딩된 값
+let R = null;                    // 최근 원시 측정값
+let cal = { blinkL: .08, blinkR: .08, jaw: .02, smileL: 0, smileR: 0, frownL: 0, frownR: 0, yawR: 0, pitchR: .5, rollRaw: 0, px: .5, py: .4, size: .4 };
+let autoCalDone = false, stableFrames = 0;
+const opt = { smooth: .4, mouth: 1.5, head: 1, swap: false, showLm: true };
+const NEUTRAL = { eyeL: 1, eyeR: 1, gx: 0, gy: 0, brow: 0, browL: 0, browR: 0, jaw: 0, cornerL: 0, cornerR: 0, pucker: 0, funnel: 0, tongue: 0, yaw: 0, pitch: 0, roll: 0, dx: 0, dy: 0, sc: 1 };
+function sm(key, val, a) { S[key] = S[key] === undefined ? val : S[key] + (val - S[key]) * a; }
+
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 2200); }
+
+/* ---------- 얼굴 측정 ---------- */
+function measure(res, vw, vh) {
+  const lm = res.faceLandmarks[0];
+  const bs = res.faceBlendshapes && res.faceBlendshapes[0] ? res.faceBlendshapes[0].categories : [];
+  const B = {}; for (const c of bs) B[c.categoryName] = c.score;
+  const g = n => B[n] || 0;
+
+  // 머리 방향: 랜드마크 기하로 추정 (234/454=얼굴 양끝, 1=코끝, 33/263=눈꼬리, 152=턱, 168=미간)
+  const midX = (lm[234].x + lm[454].x) / 2, half = (lm[454].x - lm[234].x) / 2 || 1e-4;
+  const eyeMidY = (lm[33].y + lm[263].y) / 2;
+  const pitchR = (lm[1].y - eyeMidY) / ((lm[152].y - eyeMidY) || 1e-4);
+  const dx = (lm[263].x - lm[33].x) * vw, dy = (lm[263].y - lm[33].y) * vh;
+
+  return {
+    blinkL: g("eyeBlinkLeft"), blinkR: g("eyeBlinkRight"),
+    wideL: g("eyeWideLeft"), wideR: g("eyeWideRight"),
+    lookInL: g("eyeLookInLeft"), lookOutL: g("eyeLookOutLeft"), lookUpL: g("eyeLookUpLeft"), lookDownL: g("eyeLookDownLeft"),
+    lookInR: g("eyeLookInRight"), lookOutR: g("eyeLookOutRight"), lookUpR: g("eyeLookUpRight"), lookDownR: g("eyeLookDownRight"),
+    browUpL: (g("browInnerUp") + g("browOuterUpLeft")) / 2, browUpR: (g("browInnerUp") + g("browOuterUpRight")) / 2,
+    browDownL: g("browDownLeft"), browDownR: g("browDownRight"),
+    jaw: g("jawOpen"), smileL: g("mouthSmileLeft"), smileR: g("mouthSmileRight"),
+    frownL: g("mouthFrownLeft"), frownR: g("mouthFrownRight"),
+    pucker: g("mouthPucker"), funnel: g("mouthFunnel"), tongue: g("tongueOut"),
+    yawR: (lm[1].x - midX) / half, pitchR,
+    rollRaw: Math.atan2(dy, dx) * 180 / Math.PI,
+    px: lm[168].x, py: lm[168].y, nx: lm[1].x, ny: lm[1].y,
+    size: lm[454].x - lm[234].x,
+  };
+}
+
+function compute(r) {
+  const sw = opt.swap ? -1 : 1;
+  const L = opt.swap ? "R" : "L", Rr = opt.swap ? "L" : "R";
+  const closeL = clamp((r["blink" + L] - cal["blink" + L]) / Math.max(.25, .7 - cal["blink" + L]));
+  const closeR = clamp((r["blink" + Rr] - cal["blink" + Rr]) / Math.max(.25, .7 - cal["blink" + Rr]));
+  const mg = opt.mouth;
+  const cornerOf = side => clamp(((r["smile" + side] - cal["smile" + side]) - (r["frown" + side] - cal["frown" + side])) * 1.5, -1, 1);
+  const browOf = side => clamp((r["browUp" + side] - r["browDown" + side]) * 1.6, -1, 1);
+  const gxRaw = ((r.lookInL - r.lookOutL) + (r.lookOutR - r.lookInR)) / 2 * sw;
+  const gyRaw = ((r.lookUpL - r.lookDownL) + (r.lookUpR - r.lookDownR)) / 2;
+  let roll = -(r.rollRaw - cal.rollRaw); if (roll > 180) roll -= 360; if (roll < -180) roll += 360;
+  const yawRaw = Math.asin(clamp((r.yawR - cal.yawR) / .7, -1, 1)) * 180 / Math.PI;
+  return {
+    eyeL: 1 - closeL, eyeR: 1 - closeR,
+    gx: clamp(gxRaw * 1.6, -1, 1), gy: clamp(gyRaw * 1.6, -1, 1),
+    brow: (browOf(L) + browOf(Rr)) / 2, browL: browOf(L), browR: browOf(Rr),
+    jaw: clamp((r.jaw - cal.jaw) * mg), cornerL: cornerOf(L), cornerR: cornerOf(Rr),
+    pucker: clamp(r.pucker * 1.4), funnel: clamp(r.funnel * 1.3), tongue: clamp((r.tongue - .15) * 3),
+    yaw: -yawRaw * opt.head, pitch: -(r.pitchR - cal.pitchR) * 150 * opt.head, roll: roll,
+    dx: -(r.px - cal.px), dy: (r.py - cal.py), sc: r.size / (cal.size || .4),
+    nx: r.nx, ny: r.ny, size: r.size,
+  };
+}
+
+function calibrate() { if (!R) { toast("얼굴이 인식되지 않았어요"); return; } cal = { ...R }; toast("정면 보정 완료"); }
+
+/* ---------- 아바타 렌더 ---------- */
+const E = {}; ["body","headRoot","headScale","hairBack","earL","earR","face","feat","blushL","blushR","browL","browR","eyeL","eyeR","irisL","irisR","lidL","lidR","lowL","lowR","lashL","lashR","noseG","mouthG","mouthFill","mouthLine","mouthClipPath","teeth","tongue","bangs"].forEach(id => E[id] = $(id));
+
+function setEye(side, open, gx, gy) {
+  const c = 1 - clamp(open);
+  const lid = E["lid" + side], low = E["low" + side], lash = E["lash" + side], iris = E["iris" + side];
+  const bottom = -34 + c * 54;                         // 위눈꺼풀 아래선 (-34 → +20)
+  lid.setAttribute("height", Math.max(0, bottom + 34));
+  low.setAttribute("y", 34 - Math.max(0, (c - .6) / .4) * 14);
+  const bend = 2 + c * 9;
+  lash.setAttribute("d", `M -27,${bottom.toFixed(1)} Q 0,${(bottom + bend).toFixed(1)} 27,${bottom.toFixed(1)}`);
+  iris.setAttribute("transform", `translate(${(gx * 9).toFixed(1)} ${(-gy * 8).toFixed(1)})`);
+}
+
+function setBrow(el, v, isLeft, baseX) {
+  const tilt = v < 0 ? -v * 14 : -v * 8;
+  const ang = isLeft ? tilt : -tilt;
+  el.setAttribute("transform", `translate(${baseX} ${-62 - v * 20}) rotate(${ang.toFixed(1)})`);
+}
+
+function setMouth(open, cL, cR, pucker, funnel, tongue) {
+  const w = 46 * (1 - .5 * pucker) * (1 - .25 * funnel);
+  const yL = -cL * 16 + (cL < 0 ? -cL * -0 : 0), yR = -cR * 16;
+  const avg = (cL + cR) / 2;
+  const cU = 6 + avg * 12 - funnel * 4;
+  const openH = open * 54 + funnel * open * 8 + (pucker > .5 ? pucker * 6 : 0) * open;
+  const midU = .25 * yL + .25 * yR + .5 * cU;
+  const cD = cU + 2 * openH;
+  const f = n => n.toFixed(1);
+  const upper = `M ${f(-w)},${f(yL)} Q 0,${f(cU)} ${f(w)},${f(yR)}`;
+  if (open > .035) {
+    const full = `${upper} Q 0,${f(cD)} ${f(-w)},${f(yL)} Z`;
+    E.mouthFill.setAttribute("d", full);
+    E.mouthClipPath.setAttribute("d", full);
+    E.mouthLine.setAttribute("d", full);
+    E.teeth.setAttribute("y", f(midU - 8)); E.teeth.setAttribute("height", f(Math.min(14, openH * .8 + 4)));
+    E.tongue.setAttribute("cy", f(midU + openH - 6)); E.tongue.setAttribute("opacity", tongue > .05 ? clamp(tongue) : (open > .35 ? .9 : 0));
+  } else {
+    E.mouthFill.setAttribute("d", "");
+    E.mouthClipPath.setAttribute("d", "");
+    E.mouthLine.setAttribute("d", upper);
+    E.teeth.setAttribute("height", 0); E.tongue.setAttribute("opacity", 0);
+  }
+}
+
+function render(t) {
+  const yaw = clamp(S.yaw || 0, -60, 60), pitch = clamp(S.pitch || 0, -40, 40), roll = clamp(S.roll || 0, -45, 45);
+  const fx = clamp(yaw * 1.15, -52, 52), fy = clamp(-pitch * 1.0, -34, 34);
+  const breathe = Math.sin(t / 900) * 2;
+  const px = clamp((S.dx || 0) * 260, -70, 70), py = clamp((S.dy || 0) * 260, -50, 50);
+  const sc = clamp(Math.pow(S.sc || 1, .7), .8, 1.22);
+
+  E.body.setAttribute("transform", `translate(${(px * .35).toFixed(1)} ${(breathe + py * .15).toFixed(1)})`);
+  E.headRoot.setAttribute("transform", `translate(${px.toFixed(1)} ${(py + breathe * .6).toFixed(1)}) rotate(${roll.toFixed(1)} 0 150)`);
+  E.headScale.setAttribute("transform", `scale(${sc.toFixed(3)})`);
+  E.feat.setAttribute("transform", `translate(${fx.toFixed(1)} ${fy.toFixed(1)})`);
+  E.face.setAttribute("transform", `translate(${(fx * .22).toFixed(1)} ${(fy * .2).toFixed(1)}) scale(${(1 - Math.abs(yaw) / 60 * .1).toFixed(3)} 1)`);
+  E.hairBack.setAttribute("transform", `translate(${(-fx * .18).toFixed(1)} ${(-fy * .1).toFixed(1)})`);
+  E.bangs.setAttribute("transform", `translate(${(fx * .55).toFixed(1)} ${(fy * .45).toFixed(1)})`);
+  E.earL.setAttribute("transform", `translate(${(fx * .25).toFixed(1)} 0)`);
+  E.earR.setAttribute("transform", `translate(${(fx * .25).toFixed(1)} 0)`);
+  E.noseG.setAttribute("transform", `translate(${(fx * .35).toFixed(1)} ${(fy * .3).toFixed(1)})`);
+
+  setEye("L", S.eyeL ?? 1, S.gx || 0, S.gy || 0);
+  setEye("R", S.eyeR ?? 1, S.gx || 0, S.gy || 0);
+  setBrow(E.browL, S.browL || 0, true, -58);
+  setBrow(E.browR, S.browR || 0, false, 58);
+  setMouth(S.jaw || 0, S.cornerL || 0, S.cornerR || 0, S.pucker || 0, S.funnel || 0, S.tongue || 0);
+
+  const smile = Math.max(0, ((S.cornerL || 0) + (S.cornerR || 0)) / 2);
+  E.blushL.setAttribute("opacity", (smile * .45).toFixed(2));
+  E.blushR.setAttribute("opacity", (smile * .45).toFixed(2));
+}
+
+/* ---------- 오버레이(랜드마크) ---------- */
+let LandmarkerCls, DrawingUtilsCls;
+const ov = $("ov"), octx = ov.getContext("2d");
+let drawer = null;
+function drawOverlay(lm) {
+  octx.clearRect(0, 0, ov.width, ov.height);
+  if (!opt.showLm || !lm || !drawer) return;
+  const F = LandmarkerCls;
+  const st = (color, w = 1.5) => ({ color, lineWidth: w });
+  drawer.drawConnectors(lm, F.FACE_LANDMARKS_TESSELATION, st("#6ea8ff30", .5));
+  drawer.drawConnectors(lm, F.FACE_LANDMARKS_FACE_OVAL, st("#ffffff90"));
+  drawer.drawConnectors(lm, F.FACE_LANDMARKS_LEFT_EYE, st("#5dffb0"));
+  drawer.drawConnectors(lm, F.FACE_LANDMARKS_RIGHT_EYE, st("#5dffb0"));
+  drawer.drawConnectors(lm, F.FACE_LANDMARKS_LEFT_EYEBROW, st("#ffd36e"));
+  drawer.drawConnectors(lm, F.FACE_LANDMARKS_RIGHT_EYEBROW, st("#ffd36e"));
+  drawer.drawConnectors(lm, F.FACE_LANDMARKS_LIPS, st("#ff7a9a", 2));
+  drawer.drawConnectors(lm, F.FACE_LANDMARKS_LEFT_IRIS, st("#6ea8ff", 2));
+  drawer.drawConnectors(lm, F.FACE_LANDMARKS_RIGHT_IRIS, st("#6ea8ff", 2));
+  const n = lm[1]; octx.fillStyle = "#ff5252"; octx.beginPath(); octx.arc(n.x * ov.width, n.y * ov.height, 4, 0, 7); octx.fill();
+}
+
+/* ---------- 메인 루프 ---------- */
+let landmarker = null, stream = null, lastVT = -1, lostAt = 0, found = false, fpsN = 0, fpsT = performance.now(), fps = 0;
+const video = $("video");
+
+function setBadge(state) {
+  const b = $("badge");
+  b.className = "badge " + (state === "ok" ? "ok" : state === "lost" ? "lost" : "");
+  b.textContent = state === "ok" ? `인식 중 · ${fps}fps` : state === "lost" ? "얼굴 없음" : "대기";
+}
+
+function loop(now) {
+  requestAnimationFrame(loop);
+  if (landmarker && video.readyState >= 2 && video.currentTime !== lastVT) {
+    lastVT = video.currentTime;
+    let res = null;
+    try { res = landmarker.detectForVideo(video, performance.now()); } catch (e) { /* 프레임 건너뜀 */ }
+    if (res && res.faceLandmarks && res.faceLandmarks.length) {
+      lostAt = 0; found = true;
+      R = measure(res, video.videoWidth, video.videoHeight);
+      if (!autoCalDone && ++stableFrames > 25) { autoCalDone = true; cal = { ...R }; toast("자동 보정 완료 · 정면 보고 C 키로 재보정"); }
+      const M = compute(R);
+      const a = 1 - opt.smooth, aFast = Math.min(1, a * 1.8);
+      for (const k in M) {
+        const fast = k === "eyeL" || k === "eyeR" || k === "jaw";
+        sm(k, M[k], fast ? aFast : a);
+      }
+      drawOverlay(res.faceLandmarks[0]);
+    } else {
+      if (!lostAt) lostAt = now;
+      if (now - lostAt > 500) { found = false; stableFrames = 0; for (const k in NEUTRAL) sm(k, NEUTRAL[k], .06); drawOverlay(null); }
+    }
+    fpsN++;
+  }
+  if (now - fpsT > 1000) { fps = fpsN; fpsN = 0; fpsT = now; if (landmarker) setBadge(found ? "ok" : "lost"); }
+  if (!landmarker) { for (const k in NEUTRAL) if (S[k] === undefined) S[k] = NEUTRAL[k]; }
+  render(now);
+}
+
+let paintT = 0;
+setInterval(() => { if (landmarker) paintMetrics(); }, 100);
+
+/* ---------- 시작 ---------- */
+function showError(e) {
+  console.error(e);
+  let msg = "문제가 생겼어요: " + (e && e.message ? e.message : e);
+  if (e && e.name === "NotAllowedError") msg = "카메라 권한이 거부되었어요. 주소창의 자물쇠(사이트 설정)에서 카메라를 허용한 뒤 다시 시도해 주세요.";
+  else if (e && e.name === "NotFoundError") msg = "사용 가능한 카메라를 찾지 못했어요.";
+  else if (e && e.name === "NotReadableError") msg = "카메라를 다른 앱이 사용 중이에요. 그 앱을 닫고 다시 시도해 주세요.";
+  else if (!window.isSecureContext) msg = "카메라는 https 주소나 localhost에서만 사용할 수 있어요.";
+  $("status").textContent = msg; $("status").className = "err";
+  $("start").disabled = false; $("start").textContent = "다시 시도";
+}
+
+$("start").onclick = async () => {
+  const btn = $("start"); btn.disabled = true; btn.textContent = "준비 중…"; $("status").className = "";
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("이 브라우저/주소에서는 카메라를 사용할 수 없어요. (https 필요)");
+    $("status").textContent = "카메라 권한을 확인하는 중…";
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }, audio: false });
+    video.srcObject = stream; await video.play();
+    ov.width = video.videoWidth; ov.height = video.videoHeight;
+    $("cam").style.aspectRatio = video.videoWidth + " / " + video.videoHeight;
+    $("cam").classList.remove("off");
+
+    $("status").textContent = "얼굴 인식 모델을 불러오는 중…";
+    const lib = await import(LIB + "/vision_bundle.mjs");
+    const { FaceLandmarker, FilesetResolver, DrawingUtils } = lib;
+    LandmarkerCls = FaceLandmarker; DrawingUtilsCls = DrawingUtils;
+    const fileset = await FilesetResolver.forVisionTasks(LIB + "/wasm");
+    const make = delegate => FaceLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: MODEL, delegate },
+      runningMode: "VIDEO", numFaces: 1,
+      outputFaceBlendshapes: true, outputFacialTransformationMatrixes: false,
+      minFaceDetectionConfidence: .5, minFacePresenceConfidence: .5, minTrackingConfidence: .5,
+    });
+    try { landmarker = await make("GPU"); } catch (e) { console.warn("GPU 실패, CPU로 전환", e); landmarker = await make("CPU"); }
+    drawer = new DrawingUtils(octx);
+    $("overlay").style.display = "none";
+    toast("정면을 바라보세요 — 곧 자동 보정됩니다");
+  } catch (e) { showError(e); }
+};
+
+/* ---------- 컨트롤 ---------- */
+function bindRange(id, key, outId, fmt) {
+  const el = $(id), out = $(outId);
+  const upd = () => { opt[key] = parseFloat(el.value); out.textContent = fmt(opt[key]); };
+  el.addEventListener("input", upd); upd();
+}
+bindRange("sSmooth", "smooth", "oSmooth", v => v.toFixed(2));
+bindRange("sMouth", "mouth", "oMouth", v => v.toFixed(1) + "×");
+bindRange("sHead", "head", "oHead", v => v.toFixed(1) + "×");
+$("cShowCam").onchange = e => $("cam").classList.toggle("off", !e.target.checked);
+$("cShowLm").onchange = e => { opt.showLm = e.target.checked; if (!opt.showLm) octx.clearRect(0, 0, ov.width, ov.height); };
+$("cSwap").onchange = e => { opt.swap = e.target.checked; };
+
+const svg = $("avatar");
+function setColor(v, val) { svg.style.setProperty(v, val); }
+function shade(hex, k) { const n = parseInt(hex.slice(1), 16); const c = i => Math.round(clamp(((n >> i) & 255) * k, 0, 255)); return `rgb(${c(16)},${c(8)},${c(0)})`; }
+$("cSkin").oninput = e => { setColor("--skin", e.target.value); setColor("--skinShade", shade(e.target.value, .88)); };
+$("cHair").oninput = e => setColor("--hair", e.target.value);
+$("cIris").oninput = e => setColor("--iris", e.target.value);
+$("cOutfit").oninput = e => setColor("--outfit", e.target.value);
+$("cBg").oninput = e => $("stage").style.background = e.target.value;
+$("greenBg").onclick = () => { $("stage").style.background = "#00b140"; $("cBg").value = "#00b140"; };
+["cSkin", "cHair", "cIris", "cOutfit"].forEach(id => $(id).dispatchEvent(new Event("input")));
+
+$("calib").onclick = calibrate;
+function toggleUi() { const h = $("app").classList.toggle("hide-ui"); $("reopen").hidden = !h; }
+$("hideUi").onclick = toggleUi; $("reopen").onclick = toggleUi;
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "c" || e.key === "C") calibrate();
+  if (e.key === "h" || e.key === "H") toggleUi();
+});
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
